@@ -6,14 +6,17 @@
 
 import os
 import ctypes
-import ctypes.wintypes as wintypes
+import platform
 import webview
 import time
-import tkinter as tk
-import platform
+import threading
 from typing import Optional
 from threading import Thread
 from pynput import keyboard
+
+# Windows-only imports — guarded to allow macOS import
+if platform.system() == "Windows":
+    import ctypes.wintypes as wintypes
 
 # --- Scroll Configuration ---
 # Configurable via .env — controls Alt+Up/Down scroll behaviour
@@ -23,37 +26,29 @@ SCROLL_AMOUNT_PX = int(os.environ.get("SCROLL_SPEED_PX", "200"))
 SCROLL_INTERVAL_MS = int(os.environ.get("SCROLL_INTERVAL_MS", "50"))
 
 # --- Win32 API Constants ---
-# These flags are used with the SetWindowDisplayAffinity function.
-# WDA_EXCLUDEFROMCAPTURE is a comprehensive flag that prevents the window from being
-# captured by most common methods, rendering it as a black rectangle in recordings.
+# These flags are only meaningful on Windows.
 WDA_EXCLUDEFROMCAPTURE = 0x00000011
 SW_HIDE = 0
 SW_SHOW = 5
 SW_SHOWNOACTIVATE = 4  # Show window without giving it focus - crucial for stealth
 
-# --- Win32 Function Loading ---
-# We use the ctypes library to load functions directly from user32.dll, a core
-# Windows library for UI management. This gives us low-level control over the window.
+# --- Win32 Function Loading (Windows only) ---
+if platform.system() == "Windows":
+    import ctypes.wintypes as wintypes
+    _user32 = ctypes.windll.user32
 
-# Load the user32 library
-_user32 = ctypes.windll.user32
+    _user32.SetWindowDisplayAffinity.restype  = wintypes.BOOL
+    _user32.SetWindowDisplayAffinity.argtypes = (wintypes.HWND, wintypes.DWORD)
 
-# Define the function signature for SetWindowDisplayAffinity
-# This tells ctypes what kind of arguments the function expects (a window handle and a flag)
-# and what it returns (a boolean indicating success).
-_user32.SetWindowDisplayAffinity.restype  = wintypes.BOOL
-_user32.SetWindowDisplayAffinity.argtypes = (wintypes.HWND, wintypes.DWORD)
+    _user32.FindWindowW.restype               = wintypes.HWND
+    _user32.FindWindowW.argtypes              = (wintypes.LPCWSTR, wintypes.LPCWSTR)
 
-# Define the function signature for FindWindowW
-# This is a fallback method to find a window by its title if the primary method fails.
-_user32.FindWindowW.restype               = wintypes.HWND
-_user32.FindWindowW.argtypes              = (wintypes.LPCWSTR, wintypes.LPCWSTR)
-
-# Define function signatures for ShowWindow and IsWindowVisible
-_user32.ShowWindow.argtypes = (wintypes.HWND, wintypes.INT)
-_user32.ShowWindow.restype = wintypes.BOOL
-_user32.IsWindowVisible.argtypes = (wintypes.HWND,)
-_user32.IsWindowVisible.restype = wintypes.BOOL
+    _user32.ShowWindow.argtypes = (wintypes.HWND, wintypes.INT)
+    _user32.ShowWindow.restype = wintypes.BOOL
+    _user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+    _user32.IsWindowVisible.restype = wintypes.BOOL
+else:
+    _user32 = None
 
 # Screen sharing indicator detection constants
 SCREEN_SHARE_INDICATORS = [
